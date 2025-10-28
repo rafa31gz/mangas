@@ -12,6 +12,53 @@ body {
     max-width: 900px;
 }
 
+.table-section {
+    position: relative;
+}
+
+.table-floating-header {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: rgba(248, 249, 250, 0.95);
+    backdrop-filter: blur(4px);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    z-index: 1100;
+    padding: calc(0.25rem + env(safe-area-inset-top, 0)) 1rem 0.25rem;
+    overflow-x: auto;
+}
+
+.table-floating-header .table {
+    margin-bottom: 0;
+}
+
+.table-floating-header .table thead th {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05rem;
+    color: #495057;
+    white-space: nowrap;
+}
+
+.table-floating-header.visible {
+    display: block;
+}
+
+.acciones-cell {
+    min-width: 180px;
+}
+
+.icon-ellipsis::after {
+    display: none;
+}
+
+.icon-ellipsis {
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
 /* Loader - Spinner */
 .loader {
     position: fixed;
@@ -40,4 +87,84 @@ body {
 }
 .loader .spinner-border {
     color: #fff;
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+
+    .responsive-table {
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+
+    .responsive-table thead {
+        display: none;
+    }
+
+    .responsive-table tbody {
+        display: block;
+    }
+
+    .responsive-table tr {
+        display: block;
+        margin-bottom: 1rem;
+        border: 1px solid #dee2e6;
+        border-radius: 0.75rem;
+        background-color: #fff;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+        padding: 0.75rem;
+    }
+
+    .responsive-table td {
+        display: block;
+        width: 100%;
+        padding: 0.4rem 0;
+        text-align: left;
+        border-bottom: none;
+    }
+
+    .responsive-table td::before {
+        content: attr(data-label);
+        display: block;
+        font-weight: 600;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05rem;
+        color: #6c757d;
+        margin-bottom: 0.1rem;
+    }
+
+    .responsive-table td[data-label="Acciones"] {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+    }
+
+    .action-buttons-desktop {
+        display: none !important;
+    }
+
+    .action-buttons-mobile .dropdown-menu {
+        min-width: 10rem;
+    }
+
+    .acciones-cell {
+        min-width: auto;
+    }
+
+    .card-compact {
+        padding: 0.75rem !important;
+        margin-top: 1rem !important;
+        border-radius: 0.65rem;
+    }
+
+    .card-compact h5 {
+        font-size: 1rem;
+        margin-bottom: 0.65rem;
+    }
 }

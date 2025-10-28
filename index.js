@@ -1,19 +1,71 @@
 const express = require('express');
-const fs = require('fs');
+const path = require('path');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const sqlite3 = require('sqlite3').verbose();
 const app = express();
 const PORT = process.env.PORT || 4000;
-const DB_FILE = 'manga.db';
+const DB_FILE = path.join(__dirname, 'manga.db');
 
 app.use(express.json());
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
 const db = new sqlite3.Database(DB_FILE, (err) => {
   if (err) console.error(err.message);
   else console.log('Conectado a la base de datos SQLite');
 });
+
+const normalizarCapitulo = (valor) => {
+  if (valor === null || valor === undefined) return '';
+  const numero = parseFloat(valor);
+  return Number.isNaN(numero) ? String(valor).trim() : String(numero);
+};
+
+const insertarManga = (nombre, url) =>
+  new Promise((resolve, reject) => {
+    db.run(
+      'INSERT INTO manga (nombre, url) VALUES (?, ?)',
+      [nombre, url],
+      function (err) {
+        if (err) return reject(err);
+        resolve(this.lastID);
+      }
+    );
+  });
+
+const obtenerMangaPorUrl = (url) =>
+  new Promise((resolve, reject) => {
+    db.get(
+      `SELECT m.id
+       FROM manga m
+       WHERE m.url = ?`,
+      [url],
+      (err, row) => {
+        if (err) return reject(err);
+        resolve(row || null);
+      }
+    );
+  });
+
+const obtenerMangaConProgreso = (id) =>
+  new Promise((resolve, reject) => {
+    db.get(
+      `SELECT m.id,
+              m.nombre,
+              m.url,
+              m.ultimo_capitulo,
+              m.fecha_consulta,
+              COALESCE(p.capitulo_actual, m.ultimo_capitulo, '0') AS capitulo_actual
+       FROM manga m
+       LEFT JOIN progreso_manga p ON m.id = p.manga_id
+       WHERE m.id = ?`,
+      [id],
+      (err, row) => {
+        if (err) return reject(err);
+        resolve(row || null);
+      }
+    );
+  });
 
 // Crear tabla si no existe
 db.run(`CREATE TABLE IF NOT EXISTS manga (
@@ -21,8 +73,18 @@ db.run(`CREATE TABLE IF NOT EXISTS manga (
     nombre TEXT UNIQUE,
     url TEXT,
     ultimo_capitulo TEXT,
-    fecha_consulta TEXT
+    fecha_consulta TEXT,
+    fecha_nuevo_capitulo TEXT
 )`);
+
+db.run(
+  `ALTER TABLE manga ADD COLUMN fecha_nuevo_capitulo TEXT`,
+  (err) => {
+    if (err && !/duplicate column name/i.test(err.message)) {
+      console.error('Error al preparar la columna fecha_nuevo_capitulo:', err);
+    }
+  }
+);
 
 // Agregar tabla para el progreso del manga
 db.run(`CREATE TABLE IF NOT EXISTS progreso_manga (
@@ -85,8 +147,12 @@ app.post('/progreso/:id', (req, res) => {
 // Obtener la lista de mangas con progreso
 app.get('/mangas', (req, res) => {
   const query = `
-        SELECT m.id, m.nombre, m.url, m.ultimo_capitulo, m.fecha_consulta, 
-               p.capitulo_actual 
+        SELECT m.id,
+               m.nombre,
+               m.url,
+               m.ultimo_capitulo,
+               m.fecha_consulta,
+               COALESCE(p.capitulo_actual, m.ultimo_capitulo) AS capitulo_actual
         FROM manga m 
         LEFT JOIN progreso_manga p ON m.id = p.manga_id`;
 
@@ -98,19 +164,107 @@ app.get('/mangas', (req, res) => {
 });
 
 // Agregar un nuevo manga con URL
-app.post('/mangas', (req, res) => {
+app.post('/mangas', async (req, res) => {
   const { nombre, url } = req.body;
   if (!nombre || !url)
     return res.status(400).json({ error: 'Nombre y URL son requeridos' });
 
-  db.run(
-    'INSERT INTO manga (nombre, url) VALUES (?, ?)',
-    [nombre, url],
-    (err) => {
-      if (err) return res.status(500).json({ error: 'Error al agregar manga' });
-      res.json({ mensaje: 'Manga agregado exitosamente' });
+  try {
+    const nombreLimpio = nombre.trim();
+    const urlLimpia = url.trim();
+    if (!nombreLimpio || !urlLimpia) {
+      return res
+        .status(400)
+        .json({ error: 'Nombre y URL son requeridos', campo: 'form' });
     }
-  );
+
+    const existente = await obtenerMangaPorUrl(urlLimpia);
+    if (existente) {
+      const mangaExistente = await obtenerMangaConProgreso(existente.id);
+      return res.status(409).json({
+        error: 'La URL ya está registrada',
+        manga: mangaExistente,
+      });
+    }
+
+    const nuevoId = await insertarManga(nombreLimpio, urlLimpia);
+
+    let resultadoActualizacion = null;
+    try {
+      resultadoActualizacion = await actualizarMangaPorId(nuevoId);
+    } catch (errorActualizacion) {
+      console.error(
+        'No se pudo actualizar automáticamente el nuevo manga:',
+        errorActualizacion
+      );
+    }
+
+    const manga = await obtenerMangaConProgreso(nuevoId);
+    if (!manga) {
+      return res
+        .status(500)
+        .json({ error: 'No se pudo recuperar el manga recién agregado' });
+    }
+
+    const respuesta = {
+      ...manga,
+      nuevo: Boolean(resultadoActualizacion?.nuevo),
+    };
+
+    if (
+      resultadoActualizacion &&
+      resultadoActualizacion.ultimo_capitulo !== undefined &&
+      resultadoActualizacion.ultimo_capitulo !== null
+    ) {
+      respuesta.ultimo_capitulo = resultadoActualizacion.ultimo_capitulo;
+    }
+    if (
+      resultadoActualizacion &&
+      resultadoActualizacion.capitulo_actual !== undefined &&
+      resultadoActualizacion.capitulo_actual !== null &&
+      resultadoActualizacion.capitulo_actual !== ''
+    ) {
+      respuesta.capitulo_actual = resultadoActualizacion.capitulo_actual;
+    }
+    if (resultadoActualizacion && resultadoActualizacion.fecha) {
+      respuesta.fecha_consulta = resultadoActualizacion.fecha;
+    }
+
+    if (
+      respuesta.capitulo_actual === undefined ||
+      respuesta.capitulo_actual === null ||
+      respuesta.capitulo_actual === ''
+    ) {
+      respuesta.capitulo_actual = '0';
+    }
+    if (
+      respuesta.ultimo_capitulo === undefined ||
+      respuesta.ultimo_capitulo === null ||
+      respuesta.ultimo_capitulo === ''
+    ) {
+      respuesta.ultimo_capitulo = '-';
+    }
+    if (!respuesta.fecha_consulta) {
+      respuesta.fecha_consulta = '-';
+    }
+
+    res.json({
+      ...respuesta,
+      mensaje: 'Manga agregado correctamente',
+    });
+  } catch (error) {
+    console.error('Error al agregar manga:', error);
+    if (
+      error &&
+      typeof error.message === 'string' &&
+      error.message.includes('UNIQUE constraint failed')
+    ) {
+      return res
+        .status(409)
+        .json({ error: 'El manga ya existe en la base de datos' });
+    }
+    res.status(500).json({ error: 'Error al agregar manga' });
+  }
 });
 
 // Consultar un manga y actualizar su capítulo (por ID)
@@ -142,7 +296,9 @@ async function actualizarMangaPorId(id) {
         if (!nuevoCapitulo)
           return reject({ error: 'No se pudo obtener el capítulo' });
 
-        const fechaActual = new Date().toLocaleString('es-MX');
+        const fechaActual = new Date();
+        const fechaActualTexto = fechaActual.toLocaleString('es-MX');
+        const fechaActualISO = fechaActual.toISOString();
 
         db.get(
           `SELECT m.id, m.nombre, m.url, m.ultimo_capitulo, m.fecha_consulta, 
@@ -161,42 +317,104 @@ async function actualizarMangaPorId(id) {
                 error: 'Manga no encontrado en la segunda consulta',
               });
 
-            let hayNuevo = false;
+            const ultimoNormalizado = normalizarCapitulo(
+              row.ultimo_capitulo
+            );
+            const nuevoNormalizado = normalizarCapitulo(nuevoCapitulo);
+            const capituloCambio = ultimoNormalizado !== nuevoNormalizado;
 
-            if (row.ultimo_capitulo !== nuevoCapitulo) {
-              const fechaNuevoCapitulo = row.fecha_nuevo_capitulo
+            let mostrarNuevo = capituloCambio;
+
+            const fechaNuevoCapitulo =
+              row.fecha_nuevo_capitulo &&
+              !Number.isNaN(
+                new Date(row.fecha_nuevo_capitulo).getTime()
+              )
                 ? new Date(row.fecha_nuevo_capitulo)
                 : null;
-              const diferencia = fechaNuevoCapitulo
-                ? (new Date() - fechaNuevoCapitulo) / (1000 * 60 * 60 * 24)
-                : Infinity;
 
-              if (diferencia > 1 || !fechaNuevoCapitulo) {
-                hayNuevo = true;
-                db.run(
-                  `UPDATE manga 
-                   SET ultimo_capitulo = ?, fecha_consulta = ?, fecha_nuevo_capitulo = ? 
-                   WHERE id = ?`,
-                  [nuevoCapitulo, fechaActual, fechaActual, id],
-                  (err) => {
-                    if (err) {
-                      console.error('Error al actualizar el manga:', err);
-                      return reject({ error: 'Error al actualizar datos' });
-                    }
-                  }
-                );
+            if (!mostrarNuevo && fechaNuevoCapitulo) {
+              const horasDesdeNuevo =
+                (fechaActual - fechaNuevoCapitulo) / (1000 * 60 * 60);
+              if (horasDesdeNuevo < 24) {
+                mostrarNuevo = true;
               }
             }
 
-            resolve({
-              mensaje: hayNuevo
-                ? 'Nuevo capítulo disponible'
-                : 'No hay capítulos nuevos',
-              ultimo_capitulo: nuevoCapitulo,
-              capitulo_actual: row.capitulo_actual || 0,
-              fecha: fechaActual,
-              nuevo: hayNuevo,
-            });
+            const progresoNormalizado = normalizarCapitulo(
+              row.capitulo_actual
+            );
+            const progresoVacio = progresoNormalizado === '';
+            const ultimoEsNumerico =
+              ultimoNormalizado !== '' &&
+              Number.isFinite(parseFloat(ultimoNormalizado));
+            const progresoInicial = ultimoEsNumerico
+              ? ultimoNormalizado
+              : '0';
+            const progresoParaRespuesta =
+              progresoNormalizado !== ''
+                ? progresoNormalizado
+                : capituloCambio
+                ? progresoInicial
+                : '0';
+
+            const ejecutarActualizacion = () => {
+              resolve({
+                mensaje: mostrarNuevo
+                  ? 'Nuevo capítulo disponible'
+                  : 'No hay capítulos nuevos',
+                ultimo_capitulo: nuevoCapitulo,
+                capitulo_actual: progresoParaRespuesta,
+                fecha: fechaActualTexto,
+                nuevo: mostrarNuevo,
+              });
+            };
+
+            if (capituloCambio) {
+              db.run(
+                `UPDATE manga 
+                 SET ultimo_capitulo = ?, fecha_consulta = ?, fecha_nuevo_capitulo = ? 
+                 WHERE id = ?`,
+                [nuevoNormalizado, fechaActualTexto, fechaActualISO, id],
+                (err) => {
+                  if (err) {
+                    console.error('Error al actualizar el manga:', err);
+                    return reject({ error: 'Error al actualizar datos' });
+                  }
+                  if (progresoVacio) {
+                    db.run(
+                      `INSERT INTO progreso_manga (manga_id, capitulo_actual)
+                       VALUES (?, ?)
+                       ON CONFLICT(manga_id) DO UPDATE SET capitulo_actual = excluded.capitulo_actual`,
+                      [id, progresoInicial],
+                      (err) => {
+                        if (err) {
+                          console.error(
+                            'Error al ajustar progreso automáticamente:',
+                            err
+                          );
+                        }
+                        ejecutarActualizacion();
+                      }
+                    );
+                  } else {
+                    ejecutarActualizacion();
+                  }
+                }
+              );
+            } else {
+              db.run(
+                `UPDATE manga SET fecha_consulta = ? WHERE id = ?`,
+                [fechaActualTexto, id],
+                (err) => {
+                  if (err) {
+                    console.error('Error al actualizar la fecha:', err);
+                    return reject({ error: 'Error al actualizar datos' });
+                  }
+                  ejecutarActualizacion();
+                }
+              );
+            }
           }
         );
       } catch (error) {
@@ -247,14 +465,16 @@ app.post('/mangas/actualizar-todos', async (req, res) => {
       if (err)
         return res.status(500).json({ error: 'Error al obtener los mangas' });
 
-      let actualizaciones = [];
+      const resultados = [];
+      const novedades = [];
 
       // Recorrer todos los mangas y actualizarlos uno por uno
       for (const manga of mangas) {
         try {
           const resultado = await actualizarMangaPorId(manga.id);
+          resultados.push({ id: manga.id, ...resultado });
           if (resultado.nuevo) {
-            actualizaciones.push(manga.id); // Guardar ID de mangas que han sido actualizados
+            novedades.push(manga.id);
           }
         } catch (error) {
           console.error(
@@ -265,9 +485,13 @@ app.post('/mangas/actualizar-todos', async (req, res) => {
 
       // Devolver los mangas actualizados
       res.json({
-        mensaje: `Actualización completada para los mangas con ID: ${actualizaciones.join(
-          ', '
-        )}`,
+        mensaje:
+          novedades.length > 0
+            ? `Actualización completada. Nuevos capítulos en los mangas con ID: ${novedades.join(
+                ', '
+              )}`
+            : 'Actualización completada sin nuevos capítulos',
+        resultados,
       });
     });
   } catch (error) {
