@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Descargas de Manga</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script defer src="descargas.js?v=2"></script>
+  </head>
+  <body>
+    <div id="loader" class="loader">
+      <div class="spinner-border" role="status">
+        <span class="visually-hidden">Cargando...</span>
+      </div>
+    </div>
+    <div class="container py-4">
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <a href="/" id="volverListado" class="btn btn-link px-0">&larr; Volver al listado</a>
+        <button id="refrescarLista" class="btn btn-outline-secondary btn-sm">
+          🔁 Refrescar
+        </button>
+        <button id="actualizarUrlDescargas" class="btn btn-outline-primary btn-sm">
+          🌐 Actualizar URL
+        </button>
+        <button id="marcarTodoDescargado" class="btn btn-primary btn-sm">
+          ✅ Marcar todo descargado
+        </button>
+      </div>
+
+      <div id="mensajeEstado" class="alert alert-warning d-none" role="alert"></div>
+
+      <div class="card mb-3">
+        <div class="card-body">
+          <h2 class="card-title h4 mb-1" id="tituloManga">Descargas</h2>
+          <p class="mb-0">
+            <strong>Progreso de lectura:</strong>
+            <span id="progresoManga">-</span>
+          </p>
+          <p class="mb-1">
+            <strong>Último capítulo registrado:</strong>
+            <span id="ultimoCapituloManga">-</span>
+          </p>
+          <a
+            id="enlaceManga"
+            href="#"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="small text-decoration-none"
+          >
+            Ver manga en el sitio original
+          </a>
+        </div>
+      </div>
+
+      <div class="row g-3 mb-4">
+        <div class="col-md-4">
+          <div class="card text-center h-100">
+            <div class="card-body">
+              <p class="text-muted small mb-1">Total capítulos</p>
+              <p class="display-6 mb-0" id="resumenTotal">0</p>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card text-center h-100">
+            <div class="card-body">
+              <p class="text-muted small mb-1">Descargados</p>
+              <p class="display-6 mb-0 text-success" id="resumenDescargados">0</p>
+              <p class="text-muted small mb-0">
+                Pendientes: <span id="resumenPendientes">0</span>
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card text-center h-100">
+            <div class="card-body">
+              <p class="text-muted small mb-1">Último descargado</p>
+              <p class="fw-semibold mb-0" id="resumenUltimo">-</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-hover align-middle">
+              <thead>
+                <tr>
+                  <th style="min-width: 80px">Capítulo</th>
+                  <th>Enlace</th>
+                  <th class="text-center" style="width: 140px">Descargado</th>
+                </tr>
+              </thead>
+              <tbody id="tablaDescargas"></tbody>
+            </table>
+          </div>
+          <p id="mensajeVacio" class="text-center text-muted my-3 d-none">
+            No hay capítulos registrados para este manga.
+          </p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

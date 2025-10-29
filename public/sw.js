@@ -1,9 +1,11 @@
-const CACHE_NAME = 'manga-tracker-v3';
+const CACHE_NAME = 'manga-tracker-v4';
 const ASSETS = [
   '/',
   '/index.html',
   '/styles.css',
-  '/script.js?v=3',
+  '/script.js?v=4',
+  '/descargas.html',
+  '/descargas.js?v=2',
 ];
 
 self.addEventListener('install', (event) => {
@@ -25,9 +27,35 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  const { request } = event;
+
+  if (
+    request.mode === 'navigate' ||
+    request.destination === 'document'
+  ) {
+    event.respondWith(
+      (async () => {
+        try {
+          const networkResponse = await fetch(request);
+          return networkResponse;
+        } catch (error) {
+          const cached = await caches.match('/index.html');
+          if (cached) return cached;
+          throw error;
+        }
+      })()
+    );
+    return;
+  }
+
+  if (request.method !== 'GET') {
+    event.respondWith(fetch(request));
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request).then(
-      (cachedResponse) => cachedResponse || fetch(event.request)
+    caches.match(request).then(
+      (cachedResponse) => cachedResponse || fetch(request)
     )
   );
 });

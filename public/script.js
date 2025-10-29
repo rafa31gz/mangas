@@ -20,6 +20,51 @@ async function cargarMangas() {
   actualizarVisibilidadEncabezadoFlotante();
 }
 
+const escaparHTML = (texto) => {
+  if (texto === null || texto === undefined) return '';
+  return String(texto)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
+
+const obtenerNumeroSeguro = (valor) => {
+  const numero = Number(valor);
+  return Number.isFinite(numero) ? numero : 0;
+};
+
+const formatearNombreManga = (nombre) => {
+  if (!nombre) return '';
+  const limpio = nombre.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!limpio) return '';
+  return limpio
+    .split(' ')
+    .map((parte) =>
+      parte ? parte.charAt(0).toUpperCase() + parte.slice(1).toLowerCase() : ''
+    )
+    .join(' ');
+};
+
+const construirDescargasHTML = (id, descargados, total) => {
+  const totalSeguro = obtenerNumeroSeguro(total);
+  let descargadosSeguros = obtenerNumeroSeguro(descargados);
+  if (totalSeguro > 0) {
+    descargadosSeguros = Math.min(descargadosSeguros, totalSeguro);
+  }
+  const totalMostrar = Math.trunc(totalSeguro);
+  const descargadosMostrar = Math.trunc(descargadosSeguros);
+  const porcentaje =
+    totalSeguro > 0
+      ? Math.round((descargadosSeguros / totalSeguro) * 100)
+      : 0;
+  return `
+    <span id="descargas_text_${id}" class="fw-semibold">${descargadosMostrar} / ${totalMostrar}</span>
+    <div class="text-muted small">${porcentaje}%</div>
+  `;
+};
+
 async function agregarFilaManga(manga) {
   const tbody = document.getElementById('manga-table');
 
@@ -60,6 +105,13 @@ async function agregarFilaManga(manga) {
   const ultimoCapParaModal = Number.isFinite(ultimoCapNumero)
     ? ultimoCapNumero
     : ultimoCapReferencia;
+  const totalCapitulosDescarga = obtenerNumeroSeguro(manga.total_capitulos);
+  const totalDescargados = obtenerNumeroSeguro(manga.total_descargados);
+  const nombreFormateado = formatearNombreManga(manga.nombre);
+  const nombreOriginalSeguro = escaparHTML(manga.nombre || '');
+  const nombreRenderizado = escaparHTML(
+    nombreFormateado || manga.nombre || ''
+  );
 
   // Color del progreso
   let colorClase = 'bg-danger';
@@ -77,7 +129,9 @@ async function agregarFilaManga(manga) {
     fila.setAttribute('id', `fila_${manga.id}`);
   }
   fila.innerHTML = `
-        <td data-label="Nombre">${manga.nombre}</td>
+        <td data-label="Nombre">
+            <span class="nombre-manga" title="${nombreOriginalSeguro}">${nombreRenderizado}</span>
+        </td>
         <td data-label="Ver"><a href="${
           manga.url
         }" target="_blank" class="btn btn-sm btn-primary">🔗 Ver</a></td>
@@ -97,25 +151,23 @@ async function agregarFilaManga(manga) {
                     )}%</div> <!-- Mostrar el progreso con 2 decimales -->
             </div>
         </td>
+        <td data-label="Descargados" id="descargas_${manga.id}">
+            ${construirDescargasHTML(
+              manga.id,
+              totalDescargados,
+              totalCapitulosDescarga
+            )}
+        </td>
         <td data-label="Acciones" class="acciones-cell">
-            <div class="d-none d-md-flex gap-1 flex-wrap action-buttons-desktop">
-                <button class="btn btn-sm btn-info" data-accion="actualizar" onclick="consultarManga(${
-                  manga.id
-                })">🔄 Actualizar</button>
-                <button class="btn btn-sm btn-danger" data-accion="eliminar" onclick="eliminarManga(${
-                  manga.id
-                })">❌ Eliminar</button>
-                <button class="btn btn-sm btn-secondary" data-accion="progreso" onclick="abrirModalProgreso(${
-                  manga.id
-                }, ${capProgreso}, ${ultimoCapParaModal})">📖 Progreso</button>
-            </div>
-            <div class="dropdown d-md-none action-buttons-mobile">
+            <div class="dropdown action-buttons">
                 <button class="btn btn-sm btn-outline-secondary dropdown-toggle icon-ellipsis" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Más acciones">
                     &#8942;
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end">
                     <li><button class="dropdown-item" data-accion="actualizar" onclick="consultarManga(${manga.id})">Actualizar</button></li>
                     <li><button class="dropdown-item text-danger" data-accion="eliminar" onclick="eliminarManga(${manga.id})">Eliminar</button></li>
+                    <li><button class="dropdown-item" data-accion="actualizarUrl" onclick="actualizarUrlManga(${manga.id})">Actualizar URL</button></li>
+                    <li><button class="dropdown-item" data-accion="descargas" onclick="verDescargas(${manga.id})">Descargas</button></li>
                     <li><button class="dropdown-item" data-accion="progreso" onclick="abrirModalProgreso(${manga.id}, ${capProgreso}, ${ultimoCapParaModal})">Progreso</button></li>
                 </ul>
             </div>
@@ -123,6 +175,10 @@ async function agregarFilaManga(manga) {
     `;
   if (!filaExistente) {
     tbody.appendChild(fila);
+  }
+  const nombreCelda = fila.querySelector('td[data-label="Nombre"]');
+  if (nombreCelda) {
+    nombreCelda.dataset.nombreOriginal = (manga.nombre || '').toLowerCase();
   }
   prepararEncabezadoFlotante();
 }
@@ -218,6 +274,16 @@ async function consultarManga(id) {
     const ultimoCapitulo = parseFloat(data.ultimo_capitulo) || 1; // Último capítulo
 
     actualizarProgresoUI(id, capituloActual, ultimoCapitulo);
+    if (
+      Object.prototype.hasOwnProperty.call(data, 'total_descargados') ||
+      Object.prototype.hasOwnProperty.call(data, 'total_capitulos')
+    ) {
+      actualizarDescargasUI(
+        id,
+        data.total_descargados ?? 0,
+        data.total_capitulos ?? 0
+      );
+    }
   } catch (error) {
     console.error('Error al consultar manga:', error);
   } finally {
@@ -387,6 +453,82 @@ async function actualizarProgresoUI(id, capitulo_actual, ultimo_capitulo) {
   });
 }
 
+function actualizarDescargasUI(id, descargados, total) {
+  const celda = document.getElementById(`descargas_${id}`);
+  if (!celda) return;
+  celda.innerHTML = construirDescargasHTML(id, descargados, total);
+}
+
+function verDescargas(id) {
+  if (!id) return;
+  const url = `/descargas.html?id=${id}`;
+  window.location.href = url;
+}
+
+async function actualizarUrlManga(id) {
+  if (!id) return;
+  const fila = document.getElementById(`fila_${id}`);
+  const enlace = fila
+    ? fila.querySelector('td[data-label="Ver"] a')
+    : null;
+  const urlActual = enlace ? enlace.getAttribute('href') : '';
+  const nuevaUrl = window.prompt(
+    'Ingresa la nueva URL del manga:',
+    urlActual || ''
+  );
+
+  if (nuevaUrl === null) {
+    return; // cancelado
+  }
+
+  const urlLimpia = nuevaUrl.trim();
+  if (!urlLimpia) {
+    alert('La URL no puede estar vacía.');
+    return;
+  }
+
+  mostrarLoader();
+  try {
+    const response = await fetch(`/mangas/${id}/url`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: urlLimpia }),
+    });
+
+    let data = null;
+    try {
+      data = await response.json();
+    } catch (error) {
+      data = null;
+    }
+
+    if (!response.ok) {
+      const mensaje = data?.error || 'No se pudo actualizar la URL.';
+      alert(mensaje);
+      return;
+    }
+
+    const mangaActualizado = data?.manga || null;
+    if (mangaActualizado) {
+      await agregarFilaManga({ ...mangaActualizado, nuevo: false });
+    } else if (fila && enlace) {
+      enlace.setAttribute('href', urlLimpia);
+    }
+
+    if (data?.mensaje) {
+      alert(data.mensaje);
+    } else {
+      alert('URL actualizada correctamente.');
+    }
+  } catch (error) {
+    console.error('Error al actualizar URL:', error);
+    alert('Ocurrió un error al actualizar la URL.');
+  } finally {
+    ocultarLoader();
+    actualizarVisibilidadEncabezadoFlotante();
+  }
+}
+
 // 🟢 Loader de carga
 function mostrarLoader() {
   document.getElementById('loader').style.display = 'flex';
@@ -425,7 +567,15 @@ async function actualizarTodosLosMangas() {
 
     if (Array.isArray(result.resultados)) {
       result.resultados.forEach((manga) => {
-        const { id, ultimo_capitulo, capitulo_actual, fecha, nuevo } = manga;
+        const {
+          id,
+          ultimo_capitulo,
+          capitulo_actual,
+          fecha,
+          nuevo,
+          total_descargados,
+          total_capitulos,
+        } = manga;
 
         const capituloElemento = document.getElementById(`cap_${id}`);
         if (capituloElemento) {
@@ -440,6 +590,16 @@ async function actualizarTodosLosMangas() {
         }
 
         actualizarProgresoUI(id, capitulo_actual, ultimo_capitulo);
+        if (
+          typeof total_descargados !== 'undefined' ||
+          typeof total_capitulos !== 'undefined'
+        ) {
+          actualizarDescargasUI(
+            id,
+            total_descargados ?? 0,
+            total_capitulos ?? 0
+          );
+        }
       });
     } else {
       await cargarMangas();
@@ -467,9 +627,13 @@ function filtrarTabla() {
 
   filas.forEach((fila) => {
     const nombreCelda = fila.querySelector('td[data-label="Nombre"]');
-    const nombre = nombreCelda
+    const nombreFormateado = nombreCelda
       ? nombreCelda.textContent.toLowerCase()
       : '';
+    const nombreOriginal = nombreCelda?.dataset?.nombreOriginal
+      ? nombreCelda.dataset.nombreOriginal.toLowerCase()
+      : '';
+    const nombreCombinado = `${nombreFormateado} ${nombreOriginal}`.trim();
     const progreso =
       parseFloat(
         fila.querySelector('.progress-bar').getAttribute('aria-valuenow')
@@ -479,7 +643,7 @@ function filtrarTabla() {
     let mostrar = true;
 
     // Filtro de búsqueda por nombre
-    if (nombre.indexOf(searchInput) === -1) {
+    if (searchInput && nombreCombinado.indexOf(searchInput) === -1) {
       mostrar = false;
     }
 

@@ -47,7 +47,7 @@ body {
 }
 
 .acciones-cell {
-    min-width: 180px;
+    min-width: 140px;
 }
 
 .icon-ellipsis::after {
@@ -57,6 +57,21 @@ body {
 .icon-ellipsis {
     font-size: 1.1rem;
     line-height: 1;
+}
+
+.action-buttons .dropdown-menu {
+    min-width: 12rem;
+}
+
+.nombre-manga {
+    font-weight: 600;
+    display: inline-block;
+    max-width: 18rem;
+    word-break: break-word;
+}
+
+td[data-label="Descargados"] .small {
+    line-height: 1.1;
 }
 
 /* Loader - Spinner */
@@ -145,16 +160,16 @@ body {
         margin-top: 0.5rem;
     }
 
-    .action-buttons-desktop {
-        display: none !important;
+    .acciones-cell {
+        min-width: auto;
     }
 
-    .action-buttons-mobile .dropdown-menu {
+    .action-buttons .dropdown-menu {
         min-width: 10rem;
     }
 
-    .acciones-cell {
-        min-width: auto;
+    .nombre-manga {
+        max-width: 100%;
     }
 
     .card-compact {
