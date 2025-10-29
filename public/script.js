@@ -365,9 +365,18 @@ function abrirModalProgreso(id, capActual, ultimoCapitulo) {
   document.getElementById('capituloActual').value = parseFloat(capActual) || 0;
   document.getElementById('ultimoCapitulo').value =
     parseFloat(ultimoCapitulo) || 0;
-  
-  let modal = new bootstrap.Modal(document.getElementById('modalProgreso'));
+
+  const modalElemento = document.getElementById('modalProgreso');
+  let modal = new bootstrap.Modal(modalElemento);
   modal.show();
+
+  const input = document.getElementById('capituloActual');
+  if (input) {
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 150);
+  }
 }
 
 // 🟢 Guardar progreso sin recargar

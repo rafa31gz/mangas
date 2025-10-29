@@ -1,4 +1,5 @@
 let mangaId = null;
+let mangaActual = null;
 
 const loader = () => document.getElementById('loader');
 const mensajeEstado = () => document.getElementById('mensajeEstado');
@@ -48,6 +49,7 @@ const formatearProgreso = (capituloActual, ultimoCapitulo) => {
 
 const actualizarCabecera = (manga) => {
   if (!manga) return;
+  mangaActual = manga;
   tituloManga().textContent = manga.nombre || 'Descargas';
   progresoManga().textContent = formatearProgreso(
     manga.capitulo_actual,
@@ -252,6 +254,57 @@ const marcarTodoDescargado = async (boton) => {
   }
 };
 
+const actualizarMangaDesdeDescargas = async (boton) => {
+  if (!mangaId) return;
+  if (boton) boton.disabled = true;
+  mostrarLoader(true);
+  ocultarMensaje();
+
+  try {
+    const response = await fetch(`/manga/${mangaId}`);
+    if (!response.ok) {
+      throw new Error('No se pudo actualizar el manga.');
+    }
+    const data = await response.json();
+
+    if (mangaActual) {
+      mangaActual.ultimo_capitulo = data.ultimo_capitulo;
+      mangaActual.capitulo_actual = data.capitulo_actual;
+      mangaActual.fecha_consulta = data.fecha;
+      actualizarCabecera(mangaActual);
+    }
+
+    const totalActual = Number(resumenTotal().textContent) || 0;
+    const descargadosActual = Number(resumenDescargados().textContent) || 0;
+    const totalNuevo =
+      typeof data.total_capitulos !== 'undefined'
+        ? Number(data.total_capitulos) || 0
+        : totalActual;
+    const descargadosNuevo =
+      typeof data.total_descargados !== 'undefined'
+        ? Number(data.total_descargados) || 0
+        : descargadosActual;
+
+    actualizarResumen({
+      total: totalNuevo,
+      descargados: descargadosNuevo,
+      pendientes: Math.max(totalNuevo - descargadosNuevo, 0),
+      ultimo_descargado: resumenUltimo().textContent || '-',
+    });
+
+    await cargarDescargas();
+  } catch (error) {
+    console.error('Error al actualizar manga:', error);
+    mostrarMensaje(
+      error.message || 'No se pudo actualizar el manga.',
+      'danger'
+    );
+  } finally {
+    if (boton) boton.disabled = false;
+    mostrarLoader(false);
+  }
+};
+
 const actualizarUrlDesdeDescargas = async (boton) => {
   if (!mangaId) return;
   const enlace = enlaceManga();
@@ -314,6 +367,117 @@ const actualizarUrlDesdeDescargas = async (boton) => {
   await cargarDescargas();
 };
 
+const eliminarMangaDesdeDescargas = async (boton) => {
+  if (!mangaId) return;
+  const confirmar = window.confirm(
+    '¿Seguro que quieres eliminar este manga? Esta acción no se puede deshacer.'
+  );
+  if (!confirmar) return;
+
+  if (boton) boton.disabled = true;
+  mostrarLoader(true);
+  ocultarMensaje();
+
+  try {
+    const response = await fetch(`/mangas/${mangaId}`, {
+      method: 'DELETE',
+    });
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      const mensaje =
+        data?.error || 'No se pudo eliminar el manga. Intenta nuevamente.';
+      mostrarMensaje(mensaje, 'danger');
+      return;
+    }
+
+    mostrarMensaje(data?.mensaje || 'Manga eliminado.', 'success');
+    setTimeout(() => {
+      window.location.href = '/?eliminado=true';
+    }, 600);
+  } catch (error) {
+    console.error('Error al eliminar manga:', error);
+    mostrarMensaje(
+      error.message || 'Ocurrió un error al eliminar el manga.',
+      'danger'
+    );
+  } finally {
+    if (boton) boton.disabled = false;
+    mostrarLoader(false);
+  }
+};
+
+const abrirModalProgresoDesdeDescargas = () => {
+  if (!mangaId) return;
+  const progreso = parseFloat(mangaActual?.capitulo_actual) || 0;
+  const ultimo = parseFloat(mangaActual?.ultimo_capitulo) || 0;
+
+  document.getElementById('mangaIdDescargas').value = mangaId;
+  document.getElementById('capituloActualDescargas').value = progreso;
+  document.getElementById('ultimoCapituloDescargas').value = ultimo;
+
+  const modalElemento = document.getElementById('modalProgresoDescargas');
+  if (!modalElemento) return;
+  const modal = bootstrap.Modal.getOrCreateInstance(modalElemento);
+  modal.show();
+
+  const input = document.getElementById('capituloActualDescargas');
+  if (input) {
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 150);
+  }
+};
+
+const guardarProgresoDesdeDescargas = async (boton) => {
+  const id = document.getElementById('mangaIdDescargas').value;
+  const capituloInput = document
+    .getElementById('capituloActualDescargas')
+    .value.trim();
+
+  if (!id || capituloInput === '') {
+    mostrarMensaje('El capítulo actual es obligatorio.', 'warning');
+    return;
+  }
+
+  if (boton) boton.disabled = true;
+  mostrarLoader(true);
+
+  try {
+    const response = await fetch(`/progreso/${id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ capitulo_actual: capituloInput }),
+    });
+
+    if (!response.ok) {
+      throw new Error('No se pudo actualizar el progreso.');
+    }
+
+    if (mangaActual) {
+      mangaActual.capitulo_actual = capituloInput;
+      actualizarCabecera(mangaActual);
+    }
+
+    mostrarMensaje('Progreso actualizado correctamente.', 'success');
+  } catch (error) {
+    console.error('Error al actualizar progreso:', error);
+    mostrarMensaje(
+      error.message || 'Ocurrió un error al actualizar el progreso.',
+      'danger'
+    );
+  } finally {
+    if (boton) boton.disabled = false;
+    mostrarLoader(false);
+    const modalElemento = document.getElementById('modalProgresoDescargas');
+    const modal = modalElemento
+      ? bootstrap.Modal.getInstance(modalElemento)
+      : null;
+    if (modal) modal.hide();
+  }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
   const params = new URLSearchParams(window.location.search);
   mangaId = params.get('id');
@@ -345,6 +509,27 @@ document.addEventListener('DOMContentLoaded', () => {
   if (actualizarUrlBtn) {
     actualizarUrlBtn.addEventListener('click', () =>
       actualizarUrlDesdeDescargas(actualizarUrlBtn)
+    );
+  }
+
+  const actualizarMangaBtn = document.getElementById('actualizarMangaDescargas');
+  if (actualizarMangaBtn) {
+    actualizarMangaBtn.addEventListener('click', () =>
+      actualizarMangaDesdeDescargas(actualizarMangaBtn)
+    );
+  }
+
+  const eliminarBtn = document.getElementById('eliminarMangaDescargas');
+  if (eliminarBtn) {
+    eliminarBtn.addEventListener('click', () =>
+      eliminarMangaDesdeDescargas(eliminarBtn)
+    );
+  }
+
+  const progresoBtn = document.getElementById('abrirProgresoDescargas');
+  if (progresoBtn) {
+    progresoBtn.addEventListener('click', () =>
+      abrirModalProgresoDesdeDescargas()
     );
   }
 

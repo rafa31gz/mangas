@@ -21,15 +21,26 @@
     <div class="container py-4">
       <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
         <a href="/" id="volverListado" class="btn btn-link px-0">&larr; Volver al listado</a>
-        <button id="refrescarLista" class="btn btn-outline-secondary btn-sm">
-          🔁 Refrescar
-        </button>
-        <button id="actualizarUrlDescargas" class="btn btn-outline-primary btn-sm">
-          🌐 Actualizar URL
-        </button>
-        <button id="marcarTodoDescargado" class="btn btn-primary btn-sm">
-          ✅ Marcar todo descargado
-        </button>
+        <div class="d-flex flex-wrap gap-2">
+          <button id="refrescarLista" class="btn btn-outline-secondary btn-sm">
+            🔁 Refrescar
+          </button>
+          <button id="actualizarMangaDescargas" class="btn btn-outline-info btn-sm">
+            🔄 Actualizar
+          </button>
+          <button id="actualizarUrlDescargas" class="btn btn-outline-primary btn-sm">
+            🌐 Actualizar URL
+          </button>
+          <button id="abrirProgresoDescargas" class="btn btn-outline-success btn-sm">
+            📖 Progreso
+          </button>
+          <button id="eliminarMangaDescargas" class="btn btn-outline-danger btn-sm">
+            ❌ Eliminar
+          </button>
+          <button id="marcarTodoDescargado" class="btn btn-primary btn-sm">
+            ✅ Marcar todo descargado
+          </button>
+        </div>
       </div>
 
       <div id="mensajeEstado" class="alert alert-warning d-none" role="alert"></div>
@@ -104,6 +115,55 @@
           <p id="mensajeVacio" class="text-center text-muted my-3 d-none">
             No hay capítulos registrados para este manga.
           </p>
+        </div>
+      </div>
+    </div>
+    <!-- Modal progreso -->
+    <div class="modal fade" id="modalProgresoDescargas" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Actualizar Progreso</h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+              aria-label="Cerrar"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <input type="hidden" id="mangaIdDescargas" />
+            <input type="hidden" id="ultimoCapituloDescargas" />
+            <label for="capituloActualDescargas" class="form-label">Capítulo actual</label>
+            <input
+              type="number"
+              inputmode="decimal"
+              step="0.1"
+              min="0"
+              enterkeyhint="done"
+              id="capituloActualDescargas"
+              class="form-control"
+              placeholder="Número de capítulo"
+              required
+            />
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              data-bs-dismiss="modal"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              class="btn btn-primary"
+              id="guardarProgresoDescargas"
+              onclick="guardarProgresoDesdeDescargas(this)"
+            >
+              Guardar
+            </button>
+          </div>
         </div>
       </div>
     </div>
