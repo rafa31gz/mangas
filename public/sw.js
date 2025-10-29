@@ -1,9 +1,9 @@
-const CACHE_NAME = 'manga-tracker-v4';
+const CACHE_NAME = 'manga-tracker-v5';
 const ASSETS = [
   '/',
   '/index.html',
   '/styles.css',
-  '/script.js?v=4',
+  '/script.js?v=5',
   '/descargas.html',
   '/descargas.js?v=2',
 ];

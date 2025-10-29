@@ -22,7 +22,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <!-- Scripts -->
-    <script defer src="script.js?v=4"></script>
+    <script defer src="script.js?v=5"></script>
   </head>
 
   <body>
@@ -60,10 +60,13 @@
         </div>
       </div>
 
-      <!-- Botón para actualizar todos los mangas -->
-      <div class="d-flex justify-content-center mt-4">
+      <!-- Botones de acciones generales -->
+      <div class="d-flex flex-wrap justify-content-center gap-2 mt-4">
         <button class="btn btn-warning" onclick="actualizarTodosLosMangas()">
           Actualizar Todos los Mangas
+        </button>
+        <button class="btn btn-outline-danger" onclick="abrirModalRecargaSinCache()">
+          🔄 Recarga sin caché
         </button>
       </div>
 
@@ -158,6 +161,48 @@
               onclick="actualizarProgreso()"
             >
               Guardar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal para recarga sin caché -->
+    <div class="modal fade" id="modalRecargaSinCache" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header bg-danger text-white">
+            <h5 class="modal-title">Recargar sin caché</h5>
+            <button
+              type="button"
+              class="btn-close btn-close-white"
+              data-bs-dismiss="modal"
+              aria-label="Cerrar"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <p class="mb-2">
+              Esta acción limpiará el caché de la aplicación y recargará la página para asegurar que ves la versión más reciente.
+            </p>
+            <p class="mb-0 text-danger fw-semibold">
+              ¿Quieres continuar? Se perderán los datos sin guardar.
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              data-bs-dismiss="modal"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              class="btn btn-danger"
+              id="confirmarRecargaSinCache"
+              onclick="ejecutarRecargaSinCache(this)"
+            >
+              Limpiar y recargar
             </button>
           </div>
         </div>

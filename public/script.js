@@ -465,6 +465,52 @@ function verDescargas(id) {
   window.location.href = url;
 }
 
+function abrirModalRecargaSinCache() {
+  const modalEl = document.getElementById('modalRecargaSinCache');
+  if (!modalEl) return;
+  const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  modal.show();
+}
+
+async function limpiarServiceWorkers() {
+  if (!('serviceWorker' in navigator)) return;
+  const registros = await navigator.serviceWorker.getRegistrations();
+  await Promise.all(registros.map((registro) => registro.unregister()));
+}
+
+async function limpiarCaches() {
+  if (!('caches' in window)) return;
+  const nombres = await caches.keys();
+  await Promise.all(nombres.map((nombre) => caches.delete(nombre)));
+}
+
+async function ejecutarRecargaSinCache(boton) {
+  if (boton) boton.disabled = true;
+  const modalEl = document.getElementById('modalRecargaSinCache');
+  const modal = modalEl ? bootstrap.Modal.getInstance(modalEl) : null;
+  if (modal) {
+    modal.hide();
+  }
+
+  mostrarLoader();
+
+  try {
+    await limpiarServiceWorkers();
+    await limpiarCaches();
+  } catch (error) {
+    console.error('Error al limpiar cachés:', error);
+    alert('Ocurrió un problema al limpiar el caché. Intenta nuevamente.');
+    if (boton) boton.disabled = false;
+    ocultarLoader();
+    return;
+  }
+
+  const parametro = `forceReload=${Date.now()}`;
+  const url = new URL(window.location.href);
+  url.searchParams.set('cache', parametro);
+  window.location.replace(url.toString());
+}
+
 async function actualizarUrlManga(id) {
   if (!id) return;
   const fila = document.getElementById(`fila_${id}`);
