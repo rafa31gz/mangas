@@ -2,18 +2,177 @@ const express = require('express');
 const path = require('path');
 const axios = require('axios');
 const cheerio = require('cheerio');
+const fs = require('fs');
+const multer = require('multer');
+const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const app = express();
 const PORT = process.env.PORT || 4000;
 const DB_FILE = path.join(__dirname, 'manga.db');
+const fsPromises = fs.promises;
+const REQUIRED_TABLES = ['manga'];
 
+let db;
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
+
+connectDatabase();
+
+function openDatabase() {
+  return new sqlite3.Database(DB_FILE, (err) => {
+    if (err) {
+      console.error('Error al conectar la base de datos:', err.message);
+    } else {
+      console.log('Conectado a la base de datos SQLite');
+    }
+  });
+}
+
+function initializeSchema() {
+  if (!db) return;
+
+  db.run(`CREATE TABLE IF NOT EXISTS manga (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre TEXT UNIQUE,
+    url TEXT,
+    ultimo_capitulo TEXT,
+    fecha_consulta TEXT,
+    fecha_nuevo_capitulo TEXT
+  )`);
+
+  db.run(
+    `ALTER TABLE manga ADD COLUMN fecha_nuevo_capitulo TEXT`,
+    (err) => {
+      if (err && !/duplicate column name/i.test(err.message)) {
+        console.error('Error al preparar la columna fecha_nuevo_capitulo:', err);
+      }
+    }
+  );
+
+  db.run(`CREATE TABLE IF NOT EXISTS progreso_manga (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    manga_id INTEGER UNIQUE,
+    capitulo_actual TEXT,
+    FOREIGN KEY (manga_id) REFERENCES manga(id)
+  )`);
+
+  db.run(
+    `CREATE TABLE IF NOT EXISTS descargas (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      manga_id INTEGER NOT NULL,
+      nombre_capitulo TEXT NOT NULL,
+      enlace TEXT,
+      numero_capitulo TEXT,
+      orden INTEGER,
+      descargado INTEGER DEFAULT 0,
+      fecha_registro TEXT DEFAULT CURRENT_TIMESTAMP,
+      fecha_descarga TEXT,
+      UNIQUE(manga_id, nombre_capitulo),
+      FOREIGN KEY (manga_id) REFERENCES manga(id) ON DELETE CASCADE
+    )`,
+    (err) => {
+      if (err) {
+        console.error('Error al preparar la tabla de descargas:', err);
+      }
+    }
+  );
+}
+
+function connectDatabase() {
+  db = openDatabase();
+  initializeSchema();
+}
+
+function closeCurrentDatabase() {
+  return new Promise((resolve, reject) => {
+    if (!db) return resolve();
+    db.close((err) => {
+      if (err) return reject(err);
+      db = null;
+      resolve();
+    });
+  });
+}
+
+async function replaceDatabaseWith(filePath) {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  let backupPath = null;
+
+  await closeCurrentDatabase();
+
+  try {
+    await fsPromises.access(DB_FILE, fs.constants.F_OK);
+    backupPath = path.join(__dirname, `manga-backup-${timestamp}.db`);
+    await fsPromises.copyFile(DB_FILE, backupPath);
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      throw error;
+    }
+  }
+
+  await fsPromises.copyFile(filePath, DB_FILE);
+
+  connectDatabase();
+
+  return backupPath;
+}
+
+function validateDatabaseFile(filePath) {
+  return new Promise((resolve, reject) => {
+    const tempDb = new sqlite3.Database(
+      filePath,
+      sqlite3.OPEN_READONLY,
+      (err) => {
+        if (err) {
+          tempDb.close(() =>
+            reject(new Error('Archivo de base de datos inválido o corrupto'))
+          );
+          return;
+        }
+
+        tempDb.all(
+          `SELECT name FROM sqlite_master WHERE type='table'`,
+          [],
+          (queryErr, rows) => {
+            tempDb.close(() => {
+              if (queryErr) {
+                return reject(
+                  new Error(
+                    'No se pudo leer las tablas del archivo importado'
+                  )
+                );
+              }
+
+              const names = rows.map((row) => row.name);
+              const missing = REQUIRED_TABLES.filter(
+                (table) => !names.includes(table)
+              );
+
+              if (missing.length) {
+                return reject(
+                  new Error(
+                    `La base de datos importada no es compatible. Faltan tablas: ${missing.join(
+                      ', '
+                    )}`
+                  )
+                );
+              }
+
+              resolve();
+            });
+          }
+        );
+      }
+    );
+  });
+}
+
+app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
-
-const db = new sqlite3.Database(DB_FILE, (err) => {
-  if (err) console.error(err.message);
-  else console.log('Conectado a la base de datos SQLite');
-});
 
 const dbRun = (sql, params = []) =>
   new Promise((resolve, reject) => {
@@ -99,54 +258,6 @@ const obtenerMangaConProgreso = (id) =>
       }
     );
   });
-
-// Crear tabla si no existe
-db.run(`CREATE TABLE IF NOT EXISTS manga (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nombre TEXT UNIQUE,
-    url TEXT,
-    ultimo_capitulo TEXT,
-    fecha_consulta TEXT,
-    fecha_nuevo_capitulo TEXT
-)`);
-
-db.run(
-  `ALTER TABLE manga ADD COLUMN fecha_nuevo_capitulo TEXT`,
-  (err) => {
-    if (err && !/duplicate column name/i.test(err.message)) {
-      console.error('Error al preparar la columna fecha_nuevo_capitulo:', err);
-    }
-  }
-);
-
-// Agregar tabla para el progreso del manga
-db.run(`CREATE TABLE IF NOT EXISTS progreso_manga (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    manga_id INTEGER UNIQUE,
-    capitulo_actual TEXT,
-    FOREIGN KEY (manga_id) REFERENCES manga(id)
-)`);
-
-db.run(
-  `CREATE TABLE IF NOT EXISTS descargas (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    manga_id INTEGER NOT NULL,
-    nombre_capitulo TEXT NOT NULL,
-    enlace TEXT,
-    numero_capitulo TEXT,
-    orden INTEGER,
-    descargado INTEGER DEFAULT 0,
-    fecha_registro TEXT DEFAULT CURRENT_TIMESTAMP,
-    fecha_descarga TEXT,
-    UNIQUE(manga_id, nombre_capitulo),
-    FOREIGN KEY (manga_id) REFERENCES manga(id) ON DELETE CASCADE
-  )`,
-  (err) => {
-    if (err) {
-      console.error('Error al preparar la tabla de descargas:', err);
-    }
-  }
-);
 
 // Obtener el progreso de lectura de un manga
 app.get('/progreso/:id', async (req, res) => {
@@ -944,6 +1055,70 @@ app.post('/manga/:id/descargas/marcar-todos', async (req, res) => {
       .status(500)
       .json({ error: 'Error al marcar todos los capítulos como descargados' });
   }
+});
+
+app.post('/import/db', upload.single('file'), async (req, res) => {
+  if (!req.file || !req.file.buffer) {
+    return res.status(400).json({ error: 'Debes adjuntar un archivo .db' });
+  }
+
+  const tempPath = path.join(
+    __dirname,
+    `manga-import-${Date.now().toString(36)}.db`
+  );
+
+  try {
+    await fsPromises.writeFile(tempPath, req.file.buffer);
+    await validateDatabaseFile(tempPath);
+
+    const backupPath = await replaceDatabaseWith(tempPath);
+
+    res.json({
+      mensaje: 'Base de datos importada correctamente',
+      backup: backupPath ? path.basename(backupPath) : null,
+    });
+  } catch (error) {
+    console.error('Error al importar base de datos:', error);
+
+    if (error.message && /compatible/i.test(error.message)) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    if (error.code === 'SQLITE_BUSY' || /SQLITE_BUSY/i.test(error.message || '')) {
+      return res.status(423).json({
+        error:
+          'La base de datos está en uso. Intenta de nuevo cuando no haya operaciones en curso.',
+      });
+    }
+
+    res.status(500).json({ error: 'No se pudo importar la base de datos' });
+  } finally {
+    await fsPromises.unlink(tempPath).catch(() => {});
+  }
+});
+
+app.get('/export/db', (req, res) => {
+  fs.access(DB_FILE, fs.constants.R_OK, (err) => {
+    if (err) {
+      console.error('No se pudo acceder al archivo de base de datos:', err);
+      return res
+        .status(500)
+        .json({ error: 'No se pudo acceder a la base de datos' });
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `manga-backup-${timestamp}.db`;
+    res.download(DB_FILE, filename, (downloadError) => {
+      if (downloadError) {
+        console.error('Error al enviar la base de datos:', downloadError);
+        if (!res.headersSent) {
+          res
+            .status(500)
+            .json({ error: 'Error al descargar la base de datos' });
+        }
+      }
+    });
+  });
 });
 
 app.listen(PORT, () =>
