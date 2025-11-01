@@ -1,0 +1,13 @@
+services:
+  mangas-bot:
+    image: mangas-bot:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      OUTPUT_DIR: /app/capitulos_pdf_bot
+    volumes:
+      - ./capitulos_pdf_bot:/app/capitulos_pdf_bot
+    restart: unless-stopped

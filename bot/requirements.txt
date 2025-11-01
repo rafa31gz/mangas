@@ -1,0 +1,5 @@
+python-telegram-bot>=20.7,<21
+playwright>=1.40
+pillow>=10.0
+img2pdf>=0.5
+python-dotenv>=1.0
