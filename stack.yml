@@ -1,0 +1,17 @@
+version: "3.9"
+
+services:
+  mangas-bot:
+    image: ${DOCKER_IMAGE:-mangas-bot:latest}
+    env_file:
+      - .env
+    environment:
+      OUTPUT_DIR: /app/capitulos_pdf_bot
+    volumes:
+      - mangas-data:/app/capitulos_pdf_bot
+    deploy:
+      restart_policy:
+        condition: any
+
+volumes:
+  mangas-data:

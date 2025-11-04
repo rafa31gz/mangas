@@ -1,3 +1,5 @@
+version: "3.9"
+
 services:
   mangas-bot:
     image: mangas-bot:latest
@@ -10,4 +12,4 @@ services:
       OUTPUT_DIR: /app/capitulos_pdf_bot
     volumes:
       - ./capitulos_pdf_bot:/app/capitulos_pdf_bot
-    restart: unless-stopped
+    restart: always

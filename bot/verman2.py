@@ -365,6 +365,32 @@ def _is_trusted_site_host(host: str) -> bool:
     return any(host.endswith(suffix) for suffix in SITE_ALLOWED_SUFFIXES)
 
 
+def _is_leercapitulo_co_host(host: str) -> bool:
+    if not host:
+        return False
+    return host.lower() in {"leercapitulo.co", "www.leercapitulo.co"}
+
+
+async def _query_image_handles(owner, host: str):
+    """
+    Return image handles constrained to the expected reader container.
+    For leercapitulo.co we restrict screenshots to `.comic_wraCon.text-center img`.
+    """
+    selector = ".comic_wraCon.text-center img" if _is_leercapitulo_co_host(host) else READER_IMAGE_SELECTOR
+    try:
+        handles = await owner.query_selector_all(selector)
+    except Exception:
+        handles = []
+    if handles:
+        return handles
+    if _is_leercapitulo_co_host(host):
+        return []
+    try:
+        return await owner.query_selector_all("img")
+    except Exception:
+        return []
+
+
 def _promote_host(host: str) -> Optional[str]:
     if not host:
         return None
@@ -1171,6 +1197,7 @@ async def save_images(
     out_paths: List[pathlib.Path] = []
     fails: List[int] = []
     page_url = page.url
+    page_host = _host_from_url(page_url)
     for page_num, key_url in targets:
         out_file = tmp_dir / f"{page_num:03d}"
         saved = False
@@ -1225,7 +1252,7 @@ async def save_images(
                             if shot:
                                 break
                         if not shot:
-                            nodes = await frame.query_selector_all(READER_IMAGE_SELECTOR)
+                            nodes = await _query_image_handles(frame, page_host)
                             if nodes and 0 <= (page_num - 1) < len(nodes):
                                 shot = nodes[page_num - 1]
                             elif nodes:
@@ -1361,15 +1388,8 @@ async def capture_images_via_screenshot(
     tmp_dir: pathlib.Path,
     limit: Optional[int] = None,
 ) -> List[pathlib.Path]:
-    try:
-        handles = await owner.query_selector_all(READER_IMAGE_SELECTOR)
-    except Exception:
-        handles = []
-    if not handles:
-        try:
-            handles = await owner.query_selector_all("img")
-        except Exception:
-            handles = []
+    host = _host_from_url(page.url)
+    handles = await _query_image_handles(owner, host)
     paths: List[pathlib.Path] = []
     index = 1
     for handle in handles:
